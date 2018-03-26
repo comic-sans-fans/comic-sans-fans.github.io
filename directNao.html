@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+   <title></title>
+   <script src="http://192.168.1.2//libs/qimessaging/1.0/qimessaging.js"></script>
+   <style type="text/css">
+      html {
+         font-family: Helvetica, sans-serif;
+      }
+
+      ul {
+         position: relative;
+         list-style: none;
+         width: 30em;
+         float: left;
+         clear:both;
+         margin: 1em;
+      }
+      li {
+         position: relative;
+         border: solid grey thin;
+         padding: 1em;
+         font-size: 1em;
+         margin-top:0.2em;
+         height: 1em;
+      }
+
+      .button {
+         position: relative;
+         cursor: pointer;
+         float:left;
+         padding: 1em;
+         text-align: center;
+         font-size: 1em;
+         background-color: rgba(127,127,127,0.6);
+         border-radius: 2em;
+         border: solid black thin;
+         margin: 1em;
+      }
+
+      .button:hover {
+         background-color: rgba(0,0,0,1.0);
+         color:white;
+         border-color: rgba(127,127,127,1.0);
+      }
+
+      .loaded {
+         background-color: yellow;
+      }
+
+      .running {
+         background-color: green;
+      }
+
+      .installed {
+         background-color: rgba(127,127,127,0.2);
+      }
+
+      .waiting {
+
+      }
+
+
+      #behaviors {
+         clear:both;
+      }
+
+      .behaviorName {
+         position: absolute;
+         top:0.9em;
+         left:1em;
+         margin:0;
+         padding:0;
+         margin-left:0.2em;
+         height:1.2em;
+         vertical-align:middle;
+      }
+
+      .behaviorStatus {
+         position: absolute;
+         top:0.7em;
+         right: 1em;
+         height: 1.2em;
+         margin:0;
+         padding:0.2em;
+         
+         vertical-align:middle;
+
+         cursor:pointer;
+         border: solid rgba(127,127,127,1.0) thin;
+         border-radius: 0.2em;
+      }
+
+   </style>
+</head>
+<body>
+   <div id="refreshBehaviorsButton" class="button">Refresh Behaviors</div>
+
+   <ul id="behaviors">
+   </ul>
+
+</body>
+<script type="text/javascript">
+   var session = new QiSession("192.168.1.2");
+   var ALBehaviorManager = null;
+   
+   var behaviorNextID = 0;
+   var behaviorIDMap = [];
+
+   /* Button for refreshing behavior list */
+   document.getElementById("refreshBehaviorsButton").addEventListener('click',function(e){
+      getBehaviors();
+   });
+
+   function createBehaviorUI(behaviorName) {
+      if(!behaviorIDMap[behaviorName]) {
+         var id = (behaviorNextID++);
+         behaviorIDMap[behaviorName] = "behavior"+id;
+
+         var li = document.createElement("li");
+         li.innerHTML = '<div class="behaviorName">'+behaviorName+'</div><div id="behavior'+id+'stat" class="behaviorStatus"></div>';
+         //li.appendChild(document.createTextNode(behaviorName));
+         li.setAttribute('id',behaviorIDMap[behaviorName]);
+         document.getElementById("behaviors").appendChild(li);
+
+         var waiting = false;
+         document.getElementById("behavior"+id+"stat").addEventListener('click',function(e){
+            if(waiting === true) {
+               return;
+            } else {
+               waiting = true;
+            }
+
+            if(li.classList.contains('running')) {
+               // go back to loaded
+               setBehaviorUIStatus(behaviorName,'waiting');
+               stopBehavior(behaviorName,function(){
+                  waiting = false;
+               });
+            } else {
+               // go to running
+               setBehaviorUIStatus(behaviorName,'waiting');
+               startBehavior(behaviorName,function(){
+                  waiting = false;
+               });
+            }
+         });
+      }
+   };
+
+   function setBehaviorUIStatus(behaviorName,status) {
+      if(behaviorIDMap[behaviorName]) {
+         var li = document.getElementById(behaviorIDMap[behaviorName]);
+         li.classList.remove("running");
+         li.classList.remove("loaded");
+         li.classList.remove("installed");
+         li.classList.add(status);
+
+         status = status[0].toUpperCase()+status.substr(1).toLowerCase();
+         document.getElementById(behaviorIDMap[behaviorName]+"stat").innerText = status;
+      }
+   };
+
+
+   /* FETCH ALL INSTALLED BEHAVIORS */
+   var fetchingBehaviors = false;
+   function getBehaviors(callBack) {
+      if(ALBehaviorManager !== null) {
+         if(fetchingBehaviors === true) {
+            return;
+         } else {
+            fetchingBehaviors = true;
+         }
+
+         behaviorIDMap = [];
+         document.getElementById("behaviors").innerHTML = "";
+         document.getElementById("refreshBehaviorsButton").innerText = "Loading...";
+
+          // List Behaviors 
+         ALBehaviorManager.getInstalledBehaviors().done(function(r){
+            var notListed = 0;
+
+            /* Sort reverse alphabetical order */
+            r.sort(function(a,b){
+               if(a<b) return 1;
+               if(b<a) return -1;
+               return 0;
+            });
+
+            r.forEach(b => {
+              createBehaviorUI(b);
+              setBehaviorUIStatus(b,"installed");
+            });
+            
+            
+            getLoadedBehaviors(function(){
+               getRunningBehaviors(function(){
+                  document.getElementById("refreshBehaviorsButton").innerText = "Refresh Behaviors";
+                  fetchingBehaviors = false;
+                  if(callBack) {
+                     callBack();
+                  }
+               });
+            })
+            
+         });
+      }
+   };
+
+   function getLoadedBehaviors(callBack) {
+      if(ALBehaviorManager !== null) {
+         ALBehaviorManager.getLoadedBehaviors().done(function(r){
+
+            r.forEach(b => {
+               setBehaviorUIStatus(b,"loaded");
+            });
+
+            if(callBack) {
+               callBack();
+            }
+         });
+      }
+   };
+
+   function getRunningBehaviors(callBack) {
+      if(ALBehaviorManager !== null) {
+         ALBehaviorManager.getRunningBehaviors().done(function(r){
+
+            r.forEach(b => {
+               setBehaviorUIStatus(b,"running");
+            });
+
+            if(callBack) {
+               callBack();
+            }
+         });
+      }
+   };
+
+   function startBehavior(behaviorName,callBack) {
+      if(ALBehaviorManager !== null) {
+         ALBehaviorManager.startBehavior(behaviorName).done(function(r){
+            console.log("Behavior Started!");
+            if(callBack) {
+               callBack();
+            }
+         });
+      } 
+   };
+
+   function stopBehavior(behaviorName,callBack) {
+      if(ALBehaviorManager !== null) {
+         ALBehaviorManager.stopBehavior(behaviorName).done(function(r){
+            console.log("Behavior Stopped.");
+            if(callBack) {
+               callBack();
+            }
+         });
+      }
+   };
+
+   session.socket().on('connect',function(){
+      console.log("Connected to Nao!");
+      
+      session.service('ALBehaviorManager').done(function(pALBehaviorManager){
+         ALBehaviorManager = pALBehaviorManager;
+         getBehaviors(function(){
+            console.log(ALBehaviorManager);
+            
+            ALBehaviorManager.behaviorStarted.connect(function(behaviorName){
+               setBehaviorUIStatus(behaviorName,"running");
+            });
+
+            ALBehaviorManager.behaviorStopped.connect(function(behaviorName){
+               setBehaviorUIStatus(behaviorName,"loaded");
+            });
+
+         });
+
+      });
+
+   });
+
+</script>
+</html>

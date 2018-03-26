@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html>
+<head>
+   <title></title>
+   
+   <style type="text/css">
+      html {
+         font-family: Helvetica, sans-serif;
+      }
+
+      ol {
+         position: relative;
+         list-style: none;
+         float: left;
+         clear:both;
+         margin: 1em;
+      }
+      li {
+         position: relative;
+         border: solid grey thin;
+         border-radius: 0.4em;
+         padding: 0.4em;
+         font-size: 1em;
+         margin-top:0.2em;
+         height: 1em;
+         float: left;
+         clear: both;
+      }
+
+      .speakable {
+         cursor: pointer;
+      }
+
+      .speakable:hover {
+         background-color: cyan;
+      }
+
+      .button {
+         position: relative;
+         cursor: pointer;
+         float:left;
+         padding: 0.1em;
+         text-align: center;
+         font-size: 1em;
+         background-color: rgba(127,127,127,0.6);
+         border-radius: 0.2em;
+         border: solid black thin;
+      }
+
+      .button:hover {
+         background-color: rgba(0,0,0,1.0);
+         color:white;
+         border-color: rgba(127,127,127,1.0);
+      }
+
+      .loaded {
+         background-color: yellow;
+      }
+
+      .running {
+         background-color: green;
+      }
+
+      .installed {
+         background-color: rgba(127,127,127,0.2);
+      }
+
+      .waiting {
+
+      }
+
+
+      #behaviors {
+         clear:both;
+      }
+
+      .behaviorName {
+         position: absolute;
+         top:0.9em;
+         left:1em;
+         margin:0;
+         padding:0;
+         margin-left:0.2em;
+         height:1.2em;
+         vertical-align:middle;
+      }
+
+      .behaviorStatus {
+         position: absolute;
+         top:0.7em;
+         right: 1em;
+         height: 1.2em;
+         margin:0;
+         padding:0.2em;
+         
+         vertical-align:middle;
+
+         cursor:pointer;
+         border: solid rgba(127,127,127,1.0) thin;
+         border-radius: 0.2em;
+      }
+
+      .gameQuestion {
+         position: relative;
+         float: left;
+         width: 40em;
+         border:  solid black thin;
+         border-radius: 0.4em;
+         clear: both;
+         margin-bottom: 1em;
+      }
+
+      .gameQuestion div {
+         float: left;
+         clear:  both;
+      }
+
+      .questionTitle {
+         position: relative;
+         margin-top: 0.2em;
+         margin-left: 0.2em;
+         font-weight: bold;
+         margin-bottom: 1em;
+      }
+
+      .correctAnswer, .incorrectAnswer, .introText {
+         position: relative;
+         margin-left: 1em;
+         margin-bottom: 0.4em;
+         border:  solid black thin;
+         padding: 0.2em;
+      }
+
+      #connectButton {
+         position: relative;
+         float: left;
+         margin-left: 0.4em;
+         margin-top: 0.8em;
+         padding: 0.2em;
+      }
+
+      #connectInfo {
+         position: relative;
+         float: left;
+         margin-left: 2em;
+
+      }
+
+      #volumeBar {
+         position: relative;
+         float: left;
+         clear: both;
+         width: 30em;
+         height: 1em;
+      }
+
+      #volumeLabel {
+         position: relative;
+         float: left;
+         margin-left: 0.2em;
+         font-weight: bold;
+      }
+
+   </style>
+</head>
+<body>
+   <h1>Alternate Question Game</h1>
+   <div>
+      <p id="connectInfo">Nao's IP Address: <input id="naoIP" type="text" value="192.168.1.155" /></p>
+      <div id="connectButton" class="button">Connect</div>
+   </div>
+
+   <div>
+      <input type="range" id="volumeBar" min="0" value="0" max="100" step="1">
+      <div id="volumeLabel"></div>
+   </div>
+
+   <div id="gameArea">
+   </div>
+
+   <div id="gameQuestionTemplate" style="display:none;">
+      <div class="gameQuestion">
+         <div class="questionTitle"></div>
+         <div class="introText speakable"></div>
+         <ol class="clues">
+         </ol>
+         <div class="correctAnswer speakable"></div>
+         <div class="incorrectAnswer speakable"></div>
+      </div>
+   </div>
+
+</body>
+<script src="qimessaging.js"></script>
+<script type="text/javascript">
+
+   var connected = false;
+   var session = null;
+
+   var ALBehaviorManager = null;
+   var ALTextToSpeech = null;
+   var ALMemory = null;
+   var ALAudioPlayer = null;
+   var ALAudioDevice = null;
+
+   function connectToNao(connectionString) {
+      if(connected === true) {
+         //TODO: disconnect first
+      }
+      // Connect to Nao
+      session = new QiSession(connectionString);
+      session.socket().on('connect',function(){
+         connecting = false;
+         connected = true;
+         document.getElementById("connectButton").innerText = "Connected";
+         console.log("Connected to Nao!");
+
+         // Get Behavior Manager
+         session.service('ALBehaviorManager').done(function(pALBehaviorManager){
+            ALBehaviorManager = pALBehaviorManager;
+            console.log("ALBehaviorManager loaded.");
+         });
+
+         // Get TextToSpeechProxy
+         session.service('ALTextToSpeech').done(function(pALTextToSpeech){
+            ALTextToSpeech = pALTextToSpeech;
+            console.log("ALTextToSpeech loaded.");
+         });
+
+         // Audio
+         session.service('ALAudioPlayer').done(function(pALAudioPlayer){
+            ALAudioPlayer = pALAudioPlayer;
+            console.log("ALAudioPlayer loaded.");
+         });
+
+         session.service('ALAudioDevice').done(function(pALAudioDevice){
+            ALAudioDevice = pALAudioDevice;
+            console.log("ALAudioDevice loaded.");
+            ALAudioDevice.getOutputVolume().done(function(r){
+               document.getElementById("volumeBar").value = parseInt(r);
+               document.getElementById("volumeLabel").innerText = r;
+            });
+
+         });
+
+         session.service('ALMemory').done(function(pALMemory){
+            ALMemory = pALMemory;
+            ALMemory.subscriber("ALTextToSpeech/Status").done(function (subscriber) {
+               subscriber.signal.connect(function (status){
+                  // element 1:  done, started, enqueued
+                  if(status[1] === "started") {
+                     speaking = true;
+                  }
+                  if(status[1] === "done" || status[1] === "stopped" || status[1] === "thrown") {
+                     speaking = false;
+                  }
+                  console.log("speaking status: ", status[1]);
+               });
+            });
+
+            ALMemory.subscriber("AudioOutputChanged").done(function(subscriber){
+               subscriber.signal.connect(function (status){
+                  for(var i=0; i<status.length; i++) {
+                     if(status[i][0] === "Volume") {
+                        console.log("volume is:",status[i][1][0]);
+                        document.getElementById("volumeBar").value = status[i][1][0];
+                        document.getElementById("volumeLabel").innerText = status[i][1][0];
+                     }
+                  }
+               });
+            });
+
+         });
+
+
+      }).on('disconnect',function(){
+         connected = false;
+         console.log("disconnected from nao!");
+         document.getElementById("connectButton").innerText = "Reconnect";
+      });
+   };
+
+   var speaking = false;
+   function say(textToSpeak) {
+
+      if(ALTextToSpeech !== null) {
+
+         if(speaking === true) {
+            ALTextToSpeech.stopAll();
+         }
+
+         try {
+            ALTextToSpeech.say(textToSpeak);
+            console.log("speaking:",textToSpeak);
+         } catch(err){
+            console.log(err);
+         }
+      } else {
+         console.log("would speak, but no connection:",textToSpeak);
+      }
+   };
+
+   function setVolume(level) {
+      if(ALAudioDevice !== null) {
+         ALAudioDevice.setOutputVolume(level);
+         console.log("set volume to:",level);
+      } else {
+         console.log("would set volume, but not connected:",level);
+      }
+   }
+
+   /* FETCH ALL INSTALLED BEHAVIORS */
+   function getRunningBehaviors(callBack) {
+      if(ALBehaviorManager !== null) {
+         ALBehaviorManager.getRunningBehaviors().done(function(r){
+
+            r.forEach(b => {
+               setBehaviorUIStatus(b,"running");
+            });
+
+            if(callBack) {
+               callBack();
+            }
+         });
+      }
+   };
+
+   function startBehavior(behaviorName,callBack) {
+      if(ALBehaviorManager !== null) {
+         ALBehaviorManager.startBehavior(behaviorName).done(function(r){
+            console.log("Behavior Started!");
+            if(callBack) {
+               callBack();
+            }
+         });
+      } 
+   };
+
+   function stopBehavior(behaviorName,callBack) {
+      if(ALBehaviorManager !== null) {
+         ALBehaviorManager.stopBehavior(behaviorName).done(function(r){
+            console.log("Behavior Stopped.");
+            if(callBack) {
+               callBack();
+            }
+         });
+      }
+   };
+
+
+   /* "What am I?" game data */
+   var gameItems = [
+      {  
+         answer:"guitar",
+         article: "a", 
+         clues:[
+            "You can hold it in your hands.",
+            "It is made of wood.",
+            "You play music with it"
+         ]
+      },
+      {  
+         answer:"soccer ball",
+         article: "a",  
+         clues:[
+            "You can hold it in your hands.",
+            "It is round.",
+            "You kick it."
+         ]
+      },
+      {  
+         answer:"car",
+         article: "a",  
+         clues:[
+            "You can not hold it in your hands.",
+            "It is made of metal.",
+            "You drive it."
+         ]
+      },
+      {  
+         answer:"rain",
+         article: "",  
+         clues:[
+            "You do not see it everyday.",
+            "It is wet.",
+            "Sometimes there is lightning."
+         ]
+      },
+      {  
+         answer:"earth",
+         article: "the",  
+         clues:[
+            "You can not hold it in your hands.",
+            "It is round.",
+            "It is a planet."
+         ]
+      },
+      {  
+         answer:"plane", 
+         article: "a", 
+         clues:[
+            "You can not hold it in your hands.",
+            "It is made of metal.",
+            "You fly it."
+         ]
+      },
+      {  
+         answer:"pencil",
+         article: "a",  
+         clues:[
+            "You can hold it in your hands.",
+            "It is made of wood.",
+            "You write with it."
+         ]
+      },
+      {  
+         answer:"house",
+         article: "a",  
+         clues:[
+            "You can not hold it in your hands.",
+            "You can play in it.",
+            "It is made of wood."
+         ]
+      },
+      {  
+         answer:"cupcake",
+         article: "a",  
+         clues:[
+            "You can hold it in your hands.",
+            "It comes in many colors.",
+            "You eat it."
+         ]
+      }
+   ];
+
+   /* Create game  UI */
+   function createGameUI(gameContent) {
+      var template = document.getElementById("gameQuestionTemplate").innerHTML;
+      for(var i=0; i<gameContent.length; i++) {
+         var q = document.createElement('div');
+         q.innerHTML = template;
+         q.id = "gameQuestion"+i;
+         document.getElementById("gameArea").appendChild(q);
+         q.getElementsByClassName("questionTitle")[0].innerText = "Question "+(i+1)+" ("+gameContent[i].answer+")";
+
+         if(i === 0) {
+            q.getElementsByClassName("introText")[0].innerText = "Are you ready to guess the first item?";
+         } else {
+            q.getElementsByClassName("introText")[0].innerText = "Are you ready to guess the next item?";
+         }
+         
+         var cluePrefixes = ["first","second","third","fourth"];
+         var clues = q.getElementsByClassName("clues")[0];
+         for(var j=0; j<gameContent[i].clues.length; j++) {
+            var l = document.createElement('li');
+            l.innerText = "Your "+cluePrefixes[j]+" clue is: "+gameContent[i].clues[j];
+            l.classList.add("speakable");
+            clues.appendChild(l);
+         }
+
+         var rightPhrases = ["Good job, the correct answer is"];
+         var wrongPhrases = ["Sorry, the correct answer is"];
+
+         var ca = q.getElementsByClassName("correctAnswer")[0];
+         ca.innerText = rightPhrases[Math.round(Math.random()*(rightPhrases.length-1))] + " "+ gameContent[i].article +" "+gameContent[i].answer;
+
+         var ia = q.getElementsByClassName("incorrectAnswer")[0];
+         ia.innerText = wrongPhrases[Math.round(Math.random()*(wrongPhrases.length-1))] + " "+ gameContent[i].article +" "+gameContent[i].answer;
+      }
+
+      var speakables = document.getElementsByClassName("speakable");
+      for(var i=0; i<speakables.length; i++) {
+         speakables[i].addEventListener("click",function(e){
+            say(this.innerText);
+         });
+      }
+   };
+
+
+   // start up
+   createGameUI(gameItems);
+
+   var connecting = false;
+   document.getElementById("connectButton").addEventListener("click",function(e){
+      if(connecting === false) {
+         connecting = true;
+         connectToNao(document.getElementById("naoIP").value);
+         this.innerText = "Connecting....";
+      } else {
+         console.log("already trying to connect!");
+      }
+   });
+
+   document.getElementById("volumeBar").addEventListener("input",function(e){
+      document.getElementById("volumeLabel").innerText = this.value;
+      setVolume(this.value);
+   });
+
+</script>
+</html>
